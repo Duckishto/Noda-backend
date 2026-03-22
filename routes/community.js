@@ -64,6 +64,7 @@ router.get('/:id/stats', authMiddleware, async (req, res) => {
 })
 
 // PATCH /community/:id — admin ของชุมชนนั้นเท่านั้น
+// รองรับ name, description, domain
 router.patch('/:id', authMiddleware, async (req, res) => {
   const cid = req.params.id
 
@@ -71,13 +72,25 @@ router.patch('/:id', authMiddleware, async (req, res) => {
     return res.status(403).json({ message: 'เฉพาะ admin ของชุมชนนี้เท่านั้น' })
   }
 
-  const { name, description } = req.body
+  const { name, description, domain } = req.body
   if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อชุมชน' })
 
   try {
+    // ตรวจว่า domain ใหม่ซ้ำกับชุมชนอื่นไหม
+    if (domain) {
+      const existing = await prisma.community.findUnique({ where: { domain } })
+      if (existing && existing.id !== cid) {
+        return res.status(409).json({ message: `โดเมน ${domain} ถูกใช้งานแล้ว` })
+      }
+    }
+
     const community = await prisma.community.update({
-      where:  { id: cid },
-      data:   { name, description },
+      where: { id: cid },
+      data: {
+        name,
+        ...(description !== undefined && { description }),
+        ...(domain      && { domain }),
+      },
       select: { id: true, name: true, domain: true, description: true },
     })
     res.json(community)
@@ -129,7 +142,7 @@ router.post('/register', async (req, res) => {
       message:     'ลงทะเบียนชุมชนสำเร็จ',
       communityId,
       adminEmail,
-      adminPassword: rawPassword,   // TODO: ส่งทาง email แทน
+      adminPassword: rawPassword,
       envConfig: {
         VITE_API_URL:      'https://noda-backend-production.up.railway.app',
         VITE_COMMUNITY_ID: communityId,
