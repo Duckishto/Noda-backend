@@ -63,8 +63,31 @@ router.get('/:id/stats', authMiddleware, async (req, res) => {
   }
 })
 
+// PATCH /community/:id — admin ของชุมชนนั้นเท่านั้น
+router.patch('/:id', authMiddleware, async (req, res) => {
+  const cid = req.params.id
+
+  if (req.user.role !== 'admin' || req.user.communityId !== cid) {
+    return res.status(403).json({ message: 'เฉพาะ admin ของชุมชนนี้เท่านั้น' })
+  }
+
+  const { name, description } = req.body
+  if (!name) return res.status(400).json({ message: 'กรุณากรอกชื่อชุมชน' })
+
+  try {
+    const community = await prisma.community.update({
+      where:  { id: cid },
+      data:   { name, description },
+      select: { id: true, name: true, domain: true, description: true },
+    })
+    res.json(community)
+  } catch (err) {
+    console.error('[PATCH community]', err)
+    res.status(500).json({ message: 'เกิดข้อผิดพลาด' })
+  }
+})
+
 // POST /community/register — ชุมชนใหม่สมัครเองได้
-// ผู้นำชุมชนสมัครผ่าน Google Form หรือหน้าเว็บ noda.com
 router.post('/register', async (req, res) => {
   const { name, domain, adminEmail, adminName, adminPassword } = req.body
   if (!name || !domain || !adminEmail || !adminName) {
@@ -75,23 +98,19 @@ router.post('/register', async (req, res) => {
     const existingDomain = await prisma.community.findUnique({ where: { domain } })
     if (existingDomain) return res.status(409).json({ message: `โดเมน ${domain} ถูกใช้แล้ว` })
 
-    // communityId สร้างจาก domain
     const communityId = domain
       .toLowerCase()
       .replace(/\.(com|net|org|app|web|th)$/, '')
       .replace(/[^a-z0-9]/g, '-')
 
-    // password: ถ้าส่งมา ใช้ของเขา ถ้าไม่มี สุ่มให้
     const rawPassword = adminPassword || crypto.randomBytes(6).toString('hex')
     const hashedPw    = await bcrypt.hash(rawPassword, 10)
 
     await prisma.$transaction(async (tx) => {
-      // สร้าง community
       await tx.community.create({
         data: { id: communityId, name, domain },
       })
 
-      // ถ้า admin มีบัญชีอยู่แล้ว ให้ใช้บัญชีเดิม
       let user = await tx.user.findUnique({ where: { email: adminEmail } })
       if (!user) {
         user = await tx.user.create({
@@ -99,7 +118,6 @@ router.post('/register', async (req, res) => {
         })
       }
 
-      // เพิ่มเป็น admin ของ community ใหม่
       await tx.communityMember.create({
         data: { userId: user.id, communityId, role: 'admin' },
       })
