@@ -1,32 +1,45 @@
-const express  = require('express')
-const router   = express.Router()
+const express = require('express')
+const router  = express.Router()
 const { PrismaClient } = require('@prisma/client')
-const authMiddleware   = require('../middleware/auth')
+const auth    = require('../middleware/auth')
+const prisma  = new PrismaClient()
 
-const prisma = new PrismaClient()
-
-// GET /members?communityId=xxx&q=ค้นหา
-router.get('/', authMiddleware, async (req, res) => {
+// GET /members?q=ค้นหา
+router.get('/', auth, async (req, res) => {
   const { q } = req.query
   const cid   = req.user.communityId
 
-  const where = {
-    communityId: cid,
-    ...(q && {
-      OR: [
-        { name:  { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-      ],
-    }),
+  try {
+    const members = await prisma.communityMember.findMany({
+      where: {
+        communityId: cid,
+        ...(q && {
+          user: {
+            OR: [
+              { name:  { contains: q, mode: 'insensitive' } },
+              { email: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+        }),
+      },
+      select: {
+        role: true,
+        joinedAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { user: { name: 'asc' } },
+    })
+
+    res.json(members.map(m => ({
+      id:       m.user.id,
+      name:     m.user.name,
+      email:    m.user.email,
+      role:     m.role,
+      joinedAt: m.joinedAt,
+    })))
+  } catch (err) {
+    res.status(500).json({ message: 'เกิดข้อผิดพลาด' })
   }
-
-  const members = await prisma.user.findMany({
-    where,
-    select: { id: true, name: true, email: true, role: true },
-    orderBy: { name: 'asc' },
-  })
-
-  res.json(members)
 })
 
 module.exports = router

@@ -8,6 +8,7 @@ datasource db {
 }
 
 // ─── Community ───────────────────────────────────────────────
+// แต่ละชุมชนที่ deploy Firebase แยกกัน
 model Community {
   id          String  @id @default(cuid())
   name        String
@@ -15,24 +16,39 @@ model Community {
   description String?
   createdAt   DateTime @default(now())
 
-  users         User[]
+  members       CommunityMember[]
   posts         Post[]
   announcements Announcement[]
 }
 
-// ─── User ────────────────────────────────────────────────────
+// ─── User ─────────────────────────────────────────────────────
+// บัญชีเดียวใช้ได้ทุก community
+// ไม่มี role และไม่มี communityId อยู่ตรงนี้
 model User {
-  id          Int      @id @default(autoincrement())
-  name        String
-  email       String   @unique
-  password    String
-  role        Role     @default(user)
-  communityId String
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique   // email เดียวทั่วระบบ
+  password  String
+  createdAt DateTime @default(now())
 
-  community     Community      @relation(fields: [communityId], references: [id])
+  memberships   CommunityMember[]
   posts         Post[]
   announcements Announcement[]
+}
+
+// ─── CommunityMember ──────────────────────────────────────────
+// role ของ user ใน community นั้นๆ
+// admin เฉพาะ community ของตัวเอง ไป community อื่นเป็น user
+model CommunityMember {
+  userId      Int
+  communityId String
+  role        Role     @default(user)
+  joinedAt    DateTime @default(now())
+
+  user      User      @relation(fields: [userId],      references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, communityId])   // composite key
 }
 
 enum Role {
@@ -40,7 +56,7 @@ enum Role {
   user
 }
 
-// ─── Post ────────────────────────────────────────────────────
+// ─── Post ─────────────────────────────────────────────────────
 model Post {
   id          Int          @id @default(autoincrement())
   title       String
@@ -53,7 +69,7 @@ model Post {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  author    User      @relation(fields: [authorId], references: [id])
+  author    User      @relation(fields: [authorId],    references: [id])
   community Community @relation(fields: [communityId], references: [id])
 }
 
@@ -73,7 +89,7 @@ enum PostCategory {
   ritual
 }
 
-// ─── Announcement ────────────────────────────────────────────
+// ─── Announcement ─────────────────────────────────────────────
 model Announcement {
   id          Int              @id @default(autoincrement())
   title       String
@@ -84,7 +100,7 @@ model Announcement {
   communityId String
   createdAt   DateTime         @default(now())
 
-  author    User      @relation(fields: [authorId], references: [id])
+  author    User      @relation(fields: [authorId],    references: [id])
   community Community @relation(fields: [communityId], references: [id])
 }
 
